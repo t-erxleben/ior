@@ -36,6 +36,7 @@
 #include <inttypes.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <stdarg.h>
 
 #include "option.h"
@@ -196,16 +197,21 @@ enum {MK_UNI_DIR, STAT_SUB_DIR, READ_SUB_DIR, RM_SUB_DIR, RM_UNI_DIR};
 void VerboseMessage (int root_level, int any_level, int line, char * format, ...) {
     if ((rank==0 && verbose >= root_level) || (any_level > 0 && verbose >= any_level)) {
         char buffer[1024];
+        struct timeval t;
+        double timestamp;
         va_list args;
         va_start (args, format);
         vsnprintf (buffer, 1024, format, args);
         va_end (args);
+        
         if (root_level == 0 && any_level == -1) {
             /* No header when it is just the standard output */
             fprintf( out_logfile, "%s\n", buffer );
         } else {
+            gettimeofday(&t, NULL);
+            timestamp = t.tv_sec + t.tv_usec/1e6;
             /* add a header when the verbose is greater than 0 */
-            fprintf( out_logfile, "V-%d: Rank %3d Line %5d %s\n", root_level, rank, line, buffer );
+            fprintf( out_logfile, "V-%d: Rank %3d Line %5d Time %f %s\n", root_level, rank, line, timestamp, buffer );
         }
         fflush(out_logfile);
     }
