@@ -193,12 +193,18 @@ enum {MK_UNI_DIR, STAT_SUB_DIR, READ_SUB_DIR, RM_SUB_DIR, RM_UNI_DIR};
    Pass -1 to suppress the print for anyone.
    Then do the standard printf stuff.  This function adds the newline for you.
 */
+
+static double epoch_time_now()
+{       
+    struct timeval t;
+    gettimeofday(&t, NULL);
+    return t.tv_sec + t.tv_usec/1e6;
+}
+
 #define VERBOSE(root,any,...) VerboseMessage(root,any,__LINE__,__VA_ARGS__)
 void VerboseMessage (int root_level, int any_level, int line, char * format, ...) {
     if ((rank==0 && verbose >= root_level) || (any_level > 0 && verbose >= any_level)) {
         char buffer[1024];
-        struct timeval t;
-        double timestamp;
         va_list args;
         va_start (args, format);
         vsnprintf (buffer, 1024, format, args);
@@ -208,10 +214,8 @@ void VerboseMessage (int root_level, int any_level, int line, char * format, ...
             /* No header when it is just the standard output */
             fprintf( out_logfile, "%s\n", buffer );
         } else {
-            gettimeofday(&t, NULL);
-            timestamp = t.tv_sec + t.tv_usec/1e6;
             /* add a header when the verbose is greater than 0 */
-            fprintf( out_logfile, "V-%d: Rank %3d Line %5d Time %f %s\n", root_level, rank, line, timestamp, buffer );
+            fprintf( out_logfile, "V-%d: Rank %3d Line %5d Time %f %s\n", root_level, rank, line, epoch_time_now(), buffer );
         }
         fflush(out_logfile);
     }
@@ -827,6 +831,7 @@ void collective_create_remove(const int create, const int dirs, const int ntasks
 void directory_test(const int iteration, const int ntasks, const char *path, rank_progress_t * progress) {
     int size;
     double t[5] = {0};
+    double s[4] = {0};
     char temp_path[MAX_PATHLEN];
 
     MPI_Comm_size(testComm, &size);
@@ -834,6 +839,7 @@ void directory_test(const int iteration, const int ntasks, const char *path, ran
     VERBOSE(1,-1,"Entering directory_test on %s", path );
 
     MPI_Barrier(testComm);
+    s[0] = epoch_time_now();
     t[0] = GetTimeStamp();
 
     /* create phase */
@@ -864,6 +870,7 @@ void directory_test(const int iteration, const int ntasks, const char *path, ran
     }
 
     phase_end();
+    s[1] = epoch_time_now();
     t[1] = GetTimeStamp();
 
     /* stat phase */
@@ -890,6 +897,7 @@ void directory_test(const int iteration, const int ntasks, const char *path, ran
       }
     }
     phase_end();
+    s[2] = epoch_time_now();
     t[2] = GetTimeStamp();
 
     /* read phase */
@@ -917,6 +925,7 @@ void directory_test(const int iteration, const int ntasks, const char *path, ran
     }
 
     phase_end();
+    s[3] = epoch_time_now();
     t[3] = GetTimeStamp();
 
     if (remove_only) {
@@ -987,12 +996,12 @@ void directory_test(const int iteration, const int ntasks, const char *path, ran
         summary_table[iteration].stonewall_last_item[3] = items;
     }
 
-    VERBOSE(1,-1,"   Directory creation: %14.3f sec, %14.3f ops/sec", t[1] - t[0], summary_table[iteration].rate[0]);
-    VERBOSE(1,-1,"   Directory stat    : %14.3f sec, %14.3f ops/sec", t[2] - t[1], summary_table[iteration].rate[1]);
+    VERBOSE(0,-1,"   Directory creation: %f , %14.3f sec, %14.3f ops/sec", s[0], t[1] - t[0], summary_table[iteration].rate[0]);
+    VERBOSE(0,-1,"   Directory stat    : %f , %14.3f sec, %14.3f ops/sec", s[1], t[2] - t[1], summary_table[iteration].rate[1]);
     /* N/A
     VERBOSE(1,-1,"   Directory read    : %14.3f sec, %14.3f ops/sec", t[3] - t[2], summary_table[iteration].rate[2]);
     */
-    VERBOSE(1,-1,"   Directory removal : %14.3f sec, %14.3f ops/sec", t[4] - t[3], summary_table[iteration].rate[3]);
+    VERBOSE(0,-1,"   Directory removal : %f , %14.3f sec, %14.3f ops/sec", s[3], t[4] - t[3], summary_table[iteration].rate[3]);
 }
 
 /* Returns if the stonewall was hit */
@@ -1026,12 +1035,14 @@ int updateStoneWallIterations(int iteration, rank_progress_t * progress, double 
 void file_test(const int iteration, const int ntasks, const char *path, rank_progress_t * progress) {
     int size;
     double t[5] = {0};
+    double s[4] = {0};
     char temp_path[MAX_PATHLEN];
     MPI_Comm_size(testComm, &size);
 
     VERBOSE(3,5,"Entering file_test on %s", path);
 
     MPI_Barrier(testComm);
+    s[0] = epoch_time_now();
     t[0] = GetTimeStamp();
 
     /* create phase */
@@ -1101,6 +1112,7 @@ void file_test(const int iteration, const int ntasks, const char *path, rank_pro
     }
 
     phase_end();
+    s[1] = epoch_time_now();
     t[1] = GetTimeStamp();
 
     /* stat phase */
@@ -1124,6 +1136,7 @@ void file_test(const int iteration, const int ntasks, const char *path, rank_pro
     }
 
     phase_end();
+    s[2] = epoch_time_now();
     t[2] = GetTimeStamp();
 
     /* read phase */
@@ -1151,6 +1164,7 @@ void file_test(const int iteration, const int ntasks, const char *path, rank_pro
     }
 
     phase_end();
+    s[3] = epoch_time_now();
     t[3] = GetTimeStamp();
 
     if (remove_only) {
@@ -1226,13 +1240,13 @@ void file_test(const int iteration, const int ntasks, const char *path, rank_pro
         summary_table[iteration].stonewall_last_item[7] = items;
     }
 
-    VERBOSE(1,-1,"  File creation     : %14.3f sec, %14.3f ops/sec", t[1] - t[0], summary_table[iteration].rate[4]);
+    VERBOSE(0,-1,"   File creation     : %f , %14.3f sec, %14.3f ops/sec", s[0], t[1] - t[0], summary_table[iteration].rate[4]);
     if(summary_table[iteration].stonewall_time[MDTEST_FILE_CREATE_NUM]){
-      VERBOSE(1,-1,"  File creation (stonewall): %14.3f sec, %14.3f ops/sec", summary_table[iteration].stonewall_time[MDTEST_FILE_CREATE_NUM], summary_table[iteration].stonewall_item_sum[MDTEST_FILE_CREATE_NUM]);
+      VERBOSE(1,-1,"   File creation (stonewall): %14.3f sec, %14.3f ops/sec", summary_table[iteration].stonewall_time[MDTEST_FILE_CREATE_NUM], summary_table[iteration].stonewall_item_sum[MDTEST_FILE_CREATE_NUM]);
     }
-    VERBOSE(1,-1,"  File stat         : %14.3f sec, %14.3f ops/sec", t[2] - t[1], summary_table[iteration].rate[5]);
-    VERBOSE(1,-1,"  File read         : %14.3f sec, %14.3f ops/sec", t[3] - t[2], summary_table[iteration].rate[6]);
-    VERBOSE(1,-1,"  File removal      : %14.3f sec, %14.3f ops/sec", t[4] - t[3], summary_table[iteration].rate[7]);
+    VERBOSE(0,-1,"   File stat         : %f , %14.3f sec, %14.3f ops/sec", s[1], t[2] - t[1], summary_table[iteration].rate[5]);
+    VERBOSE(0,-1,"   File read         : %f , %14.3f sec, %14.3f ops/sec", s[2], t[3] - t[2], summary_table[iteration].rate[6]);
+    VERBOSE(0,-1,"   File removal      : %f , %14.3f sec, %14.3f ops/sec", s[3], t[4] - t[3], summary_table[iteration].rate[7]);
 }
 
 int calc_allreduce_index(int iter, int rank, int op){
@@ -1649,7 +1663,7 @@ static void mdtest_iteration(int i, int j, MPI_Group testgroup, mdtest_results_t
   progress_o.stone_wall_timer_seconds = stone_wall_timer_seconds;
   progress_o.items_per_dir = items_per_dir;
   rank_progress_t * progress = & progress_o;
-
+  double s = 0;
   /* start and end times of directory tree create/remove */
   double startCreate, endCreate;
   int k;
@@ -1677,7 +1691,9 @@ static void mdtest_iteration(int i, int j, MPI_Group testgroup, mdtest_results_t
       /* create hierarchical directory structure */
       MPI_Barrier(testComm);
 
+      s = epoch_time_now();
       startCreate = GetTimeStamp();
+
       for (int dir_iter = 0; dir_iter < directory_loops; dir_iter ++){
         prep_testdir(j, dir_iter);
 
@@ -1728,7 +1744,7 @@ static void mdtest_iteration(int i, int j, MPI_Group testgroup, mdtest_results_t
       summary_table->time[8] = (endCreate - startCreate);
       summary_table->items[8] = num_dirs_in_tree;
       summary_table->stonewall_last_item[8] = num_dirs_in_tree;
-      VERBOSE(1,-1,"V-1: main:   Tree creation     : %14.3f sec, %14.3f ops/sec", (endCreate - startCreate), summary_table->rate[8]);
+      VERBOSE(0,-1,"   Tree creation     : %f , %14.3f sec, %14.3f ops/sec", s, (endCreate - startCreate), summary_table->rate[8]);
   }
   sprintf(unique_mk_dir, "%s.0", base_tree_name);
   sprintf(unique_chdir_dir, "%s.0", base_tree_name);
@@ -1782,8 +1798,11 @@ static void mdtest_iteration(int i, int j, MPI_Group testgroup, mdtest_results_t
   }
 
   MPI_Barrier(testComm);
+
   if (remove_only) {
       progress->items_start = 0;
+      VERBOSE(1,-1, "start_tree_remove");
+      s = epoch_time_now();
       startCreate = GetTimeStamp();
       for (int dir_iter = 0; dir_iter < directory_loops; dir_iter ++){
         prep_testdir(j, dir_iter);
@@ -1834,9 +1853,11 @@ static void mdtest_iteration(int i, int j, MPI_Group testgroup, mdtest_results_t
       endCreate = GetTimeStamp();
       summary_table->rate[9] = num_dirs_in_tree / (endCreate - startCreate);
       summary_table->time[9] = endCreate - startCreate;
+      VERBOSE(1,-1, "end_tree_remove took %d", summary_table->time[9]);
       summary_table->items[9] = num_dirs_in_tree;
       summary_table->stonewall_last_item[8] = num_dirs_in_tree;
-      VERBOSE(1,-1,"main   Tree removal      : %14.3f sec, %14.3f ops/sec", (endCreate - startCreate), summary_table->rate[9]);
+      VERBOSE(0,-1,"   Tree removal      : %f , %14.3f sec, %14.3f ops/sec", s, (endCreate - startCreate), summary_table->rate[9]);
+      VERBOSE(0,-1,"----------------------");
       VERBOSE(2,-1,"main (at end of for j loop): Removing testdir of '%s'\n", testdir );
 
       for (int dir_iter = 0; dir_iter < directory_loops; dir_iter ++){
